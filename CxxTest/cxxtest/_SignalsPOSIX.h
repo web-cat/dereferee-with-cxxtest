@@ -12,8 +12,10 @@
 namespace CxxTest
 {
     const int                       __cxxtest_jmpmax = 10;
-    extern jmp_buf                  __cxxtest_jmpbuf[__cxxtest_jmpmax];
+    extern sigjmp_buf               __cxxtest_jmpbuf[__cxxtest_jmpmax];
     extern volatile sig_atomic_t    __cxxtest_jmppos;
+    extern int                      __cxxtest_last_signal;
+    extern bool                     __cxxtest_last_abort_was_overflow;
 
 
     // ----------------------------------------------------------
@@ -40,13 +42,14 @@ namespace CxxTest
 
     // ----------------------------------------------------------
     #define _TS_TRY_WITH_SIGNAL_PROTECTION \
+        CxxTest::__cxxtest_last_signal = 0; \
         CxxTest::__cxxtest_sig_backtrace = NULL; \
         if ( ++CxxTest::__cxxtest_jmppos >= CxxTest::__cxxtest_jmpmax ) { \
             puts("Too many nested signal handler levels.\n"); \
             exit( 1 ); \
         } \
         _TS_SAVE_BT_CONTEXT; \
-        if ( !setjmp(CxxTest::__cxxtest_jmpbuf[CxxTest::__cxxtest_jmppos]) )
+        if ( !sigsetjmp(CxxTest::__cxxtest_jmpbuf[CxxTest::__cxxtest_jmppos], 1) )
 
 
     // ----------------------------------------------------------
@@ -63,7 +66,7 @@ namespace CxxTest
 
     // ----------------------------------------------------------
     #define _TS_CATCH_SIGNAL( action ) \
-        else { _TS_RESTORE_BT_CONTEXT; action; } _TS_SIGNAL_CLEANUP
+        else { action; } _TS_RESTORE_BT_CONTEXT; _TS_SIGNAL_CLEANUP
 
 
 } // end namespace CxxTest

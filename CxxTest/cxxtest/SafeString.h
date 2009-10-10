@@ -151,6 +151,8 @@ public:
             append(*rhs);
             rhs++;
         }
+        
+        return *this;
     }
 
 
@@ -167,6 +169,8 @@ public:
             append(*str);
             str++;
         }
+        
+        return *this;
     }
 
 
@@ -231,6 +235,7 @@ private:
         
         buffer = (char*) malloc(capacity);
         memcpy(buffer, src.buffer, size);
+        buffer[size] = '\0';
     }
 
 

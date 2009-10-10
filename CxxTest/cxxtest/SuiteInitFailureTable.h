@@ -28,7 +28,7 @@ public:
     // ----------------------------------------------------------
     ~SuiteInitFailureTable()
     {
-        for (int i = 0; i < entries.size(); i++)
+        for (size_t i = 0; i < entries.size(); i++)
         {
             free(entries[i].name);
             free(entries[i].reason);
@@ -52,7 +52,7 @@ public:
     // ----------------------------------------------------------
     const char* didSuiteFail(const char* name)
     {
-        for (int i = 0; i < entries.size(); i++)
+        for (size_t i = 0; i < entries.size(); i++)
         {
             if (strcmp(name, entries[i].name) == 0)
             {
@@ -69,7 +69,7 @@ private:
     // ----------------------------------------------------------
     char* copyString(const char* str)
     {
-        int len = strlen(str);
+        size_t len = strlen(str);
         char* copy = (char*) malloc(len);
         strcpy(copy, str);
         return copy;

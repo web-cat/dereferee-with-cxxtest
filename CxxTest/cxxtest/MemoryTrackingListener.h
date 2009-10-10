@@ -8,6 +8,7 @@
 // 
 
 #include <cxxtest/TestListener.h>
+#include <cxxtest/TestTracker.h>
 #include <dereferee.h>
 
 #include <iostream>
@@ -48,14 +49,14 @@ namespace CxxTest
 
 
         // ----------------------------------------------------------
-        void enterTest(const TestDescription& d)
+        void enterTest(const TestDescription& /* d */)
         {
             tagAction(ADVANCE);
         }
         
 
         // ----------------------------------------------------------
-        void leaveTest(const TestDescription& d)
+        void leaveTest(const TestDescription& /* d */)
         {
             // If this test failed, we give the user the benefit of the
             // doubt that any memory allocated in the test would have been
@@ -71,10 +72,10 @@ namespace CxxTest
     private:
         // ----------------------------------------------------------
         static void sweepVisitor(
-            Dereferee::allocation_info& allocInfo, void* arg)
+            Dereferee::allocation_info& allocInfo, void* /* arg */)
         {
-            unsigned int allocTag =
-                ((unsigned int) allocInfo.user_info()) & 0x7FFFFFFF;
+            uintptr_t allocTag =
+                ((uintptr_t) allocInfo.user_info()) & 0x7FFFFFFF;
 
             // If the memory block has the current tag, mark it as "probably
             // not leaked" so we don't report on it later.

@@ -126,10 +126,11 @@ namespace CxxTest
 
 
         // ------------------------------------------------------
-        virtual bool visitBacktraceFrame(int index, void* frame,
-                                          const char* function,
-                                          const char* filename,
-                                          int lineNumber)
+        virtual bool visitBacktraceFrame(int /* index */,
+                                         void* /* frame */,
+                                         const char* /* function */,
+                                         const char* /* filename */,
+                                         int /* lineNumber */)
         {
             return true;
         }

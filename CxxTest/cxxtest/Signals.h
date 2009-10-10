@@ -17,6 +17,8 @@ namespace CxxTest
     //
     extern bool         __cxxtest_runCompleted;
     extern void**       __cxxtest_sig_backtrace;
+    extern SafeString   __cxxtest_sigmsg;
+    extern SafeString   __cxxtest_assertmsg;
 }
 
 
@@ -33,28 +35,18 @@ namespace CxxTest
 #   include <cxxtest/_SignalsPOSIX.h>
 #endif
 
-
-namespace CxxTest
-{
-    //
-    // Defined in Root.cpp
-    //
-    extern SafeString   __cxxtest_sigmsg;
-    extern SafeString   __cxxtest_assertmsg;
-
     // ----------------------------------------------------------
     #define _TS_THROWS_NO_SIGNAL( msg, action ) \
         _TS_TRY_WITH_SIGNAL_PROTECTION \
             action \
-        _TS_CATCH_SIGNAL( { tracker().failedTest( __FILE__, __LINE__, msg ); } )
+        _TS_CATCH_SIGNAL( { \
+            CxxTest::tracker().failedTest( __FILE__, __LINE__, msg ); \
+        } )
 
 
     // ----------------------------------------------------------
     #define TS_MESSAGE_FOR_SIGNAL( msg ) \
         ( CxxTest::__cxxtest_sigmsg = msg )
-
-
-} // end namespace CxxTest
 
 #else // !CXXTEST_TRAP_SIGNALS
 

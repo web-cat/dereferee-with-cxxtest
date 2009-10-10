@@ -19,8 +19,10 @@ namespace CxxTest
     //
     // setjmp/longjmp bookkeeping for non-MSVC++ platforms.
     //
-    jmp_buf __cxxtest_jmpbuf[__cxxtest_jmpmax];
+    sigjmp_buf __cxxtest_jmpbuf[__cxxtest_jmpmax];
     volatile sig_atomic_t __cxxtest_jmppos = -1;
+    int __cxxtest_last_signal = 0;
+    bool __cxxtest_last_abort_was_overflow = false;
 
 
     // ----------------------------------------------------------
@@ -57,6 +59,9 @@ namespace CxxTest
                                 void* /* arg */ )
     {
         const char* msg = "run-time exception";
+
+        __cxxtest_last_signal = signum;
+        CxxTest::__cxxtest_last_abort_was_overflow = false;
 
         switch ( signum )
         {
@@ -132,7 +137,7 @@ namespace CxxTest
 
         if ( CxxTest::__cxxtest_jmppos >= 0 )
         {
-            longjmp( CxxTest::__cxxtest_jmpbuf[CxxTest::__cxxtest_jmppos], 1 );
+            siglongjmp( CxxTest::__cxxtest_jmpbuf[CxxTest::__cxxtest_jmppos], 1 );
         }
         else
         {
@@ -172,7 +177,7 @@ extern "C" {
         
 #define FMTBUFFERLEN 32
         char fmtBuffer[FMTBUFFERLEN];
-        snprintf(fmtBuffer, FMTBUFFERLEN, "%lu", line);
+        snprintf(fmtBuffer, FMTBUFFERLEN, "%u", line);
         str += fmtBuffer;
 
         CxxTest::__cxxtest_assertmsg = str;
