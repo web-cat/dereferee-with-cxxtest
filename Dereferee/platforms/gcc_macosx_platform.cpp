@@ -70,7 +70,7 @@ static uint32_t saved_back_trace_indices[MAX_SAVED_CONTEXTS];
 
 struct stab_info
 {
-	uint32_t address;
+	uintptr_t address;
 	const char *filename;
 	int line;
 	int unknown;
@@ -90,14 +90,19 @@ private:
 	static symbol_table *the_instance;
 
 	/**
+	 * True if the executable is x86_64; false for i386 or ppc.
+	 */
+	bool is_64_bit;
+
+	/**
 	 * The number of symbols loaded.
 	 */
 	uint32_t symbol_count;
 	
 	/**
-	 * The array of nlist structures that contains the symbols.
+	 * The array of nlist(_64) structures that contains the symbols.
 	 */
-	struct nlist *symbols;
+	void *symbols;
 	
 	/**
 	 * True if the symbols need to be sorted after loading, otherwise false.
@@ -118,6 +123,12 @@ private:
 	 * True if the stab_infos need to be sorted after loading, otherwise false.
 	 */
 	bool stab_info_needs_sort;
+	
+	/**
+	 * A pointer to the executable's string table that contains the filenames
+	 * and symbol names used in the program.
+	 */
+	const char *string_table;
 
 	// -----------------------------------------------------------------------
 	/**
@@ -127,15 +138,37 @@ private:
 
 	// -----------------------------------------------------------------------
 	/**
-	 * Iterates over the Mach-O load commands in the executable.
+	 * Checks the 64-bitness of the executable and calls the appropriate
+	 * processor function.
+	 */
+	void process_executable() NO_INSTR;
+
+	// -----------------------------------------------------------------------
+	/**
+	 * Iterates over the Mach-O load commands in a 32-bit executable.
 	 */
 	void process_load_commands() NO_INSTR;
 
 	// -----------------------------------------------------------------------
 	/**
-	 * Extracts the symbols from the LC_SYMTAB load command of the executable.
+	 * Iterates over the Mach-O load commands in a 64-bit executable.
 	 */
-	void process_symtab_command(struct symtab_command *cmd, int vmoffset)
+	void process_load_commands_64() NO_INSTR;
+
+	// -----------------------------------------------------------------------
+	/**
+	 * Extracts the symbols from the LC_SYMTAB load command of a 32-bit
+	 * executable.
+	 */
+	void process_symtab_command(struct symtab_command *cmd, intptr_t vmoffset)
+		NO_INSTR;
+
+	// -----------------------------------------------------------------------
+	/**
+	 * Extracts the symbols from the LC_SYMTAB load command of a 64-bit
+	 * executable.
+	 */
+	void process_symtab_command_64(struct symtab_command *cmd, intptr_t vmoffset)
 		NO_INSTR;
 
 public:
@@ -163,7 +196,7 @@ public:
 	 * @returns the mangled name of the symbol if found, or NULL if there was
 	 *     no symbol at that address
 	 */
-	const char *symbol_name_at_address(uint32_t address) NO_INSTR;
+	const char *symbol_name_at_address(uintptr_t address) NO_INSTR;
 
 	// -----------------------------------------------------------------------
 	/**
@@ -175,7 +208,7 @@ public:
 	 * @returns the demangled name of the symbol if found, or NULL if there
 	 *     was no symbol at that address
 	 */
-	char *demangled_name_at_address(uint32_t address) NO_INSTR;
+	char *demangled_name_at_address(uintptr_t address) NO_INSTR;
 
 	// -----------------------------------------------------------------------
 	/**
@@ -191,7 +224,7 @@ public:
 	 *     may be offset) if it was found, or NULL if there was no symbol at
 	 *     that address
 	 */
-	uint32_t source_location_at_address(uint32_t address, const char **path,
+	uintptr_t source_location_at_address(uintptr_t address, const char **path,
 		uint32_t *line) NO_INSTR;
 
 	// -----------------------------------------------------------------------
@@ -240,7 +273,8 @@ public:
 };
 
 // ---------------------------------------------------------------------------
-gcc_macosx_platform::gcc_macosx_platform(const Dereferee::option* options)
+gcc_macosx_platform::gcc_macosx_platform(
+		const Dereferee::option* /* options */)
 {
 	// Force the symbol table to be created at the start of execution.
 	symbol_table::instance();
@@ -252,7 +286,8 @@ gcc_macosx_platform::~gcc_macosx_platform()
 }
 
 // ------------------------------------------------------------------
-void** gcc_macosx_platform::get_backtrace(void* instr_ptr, void* frame_ptr)
+void** gcc_macosx_platform::get_backtrace(void* /* instr_ptr */,
+		void* /* frame_ptr */)
 {
 	if(back_trace_index == 0)
 		return NULL;
@@ -286,7 +321,8 @@ bool gcc_macosx_platform::get_backtrace_frame_info(void* frame, char* function,
 	*line_number = 0;
 
 	char *name = symbol_table::instance()->demangled_name_at_address(
-		(uint32_t)frame);
+		(uintptr_t)frame);
+
 	const char *path = "";
 	uint32_t line = 0;
 
@@ -294,9 +330,9 @@ bool gcc_macosx_platform::get_backtrace_frame_info(void* frame, char* function,
 	{
 		strncpy(function, name, DEREFEREE_MAX_FUNCTION_LEN - 1);
 
-		uint32_t true_address =
+		uintptr_t true_address =
 			symbol_table::instance()->source_location_at_address(
-			(uint32_t)frame, &path, &line);
+			(uintptr_t)frame, &path, &line);
 
 		if (true_address)
 		{
@@ -383,7 +419,7 @@ void __cyg_profile_func_enter(void *this_fn, void *call_site)
 }
 
 // -----------------------------------------------------------------------
-void __cyg_profile_func_exit(void *this_fn, void *call_site)
+void __cyg_profile_func_exit(void * /* this_fn */, void * /* call_site */)
 {
     if (back_trace_index)
 		back_trace_index--;
@@ -447,7 +483,7 @@ symbol_table::symbol_table()
 	stab_info = NULL;
 	stab_info_needs_sort = false;
 
-	process_load_commands();
+	process_executable();
 }
 
 // -----------------------------------------------------------------------
@@ -458,46 +494,85 @@ symbol_table::~symbol_table()
 }
 
 // -----------------------------------------------------------------------
-const char *symbol_table::symbol_name_at_address(uint32_t address)
+const char *symbol_table::symbol_name_at_address(uintptr_t address)
 {
 	uint32_t low = 0;
 	uint32_t high = symbol_count;
 
-	while(low < high)
+	if (is_64_bit)
 	{
-		uint32_t mid = low + ((high - low) / 2);
+		struct nlist_64 *syms = (struct nlist_64 *) symbols;
 
-		if(symbols[mid].n_value < address)
-			low = mid + 1;
+		while(low < high)
+		{
+			uint32_t mid = low + ((high - low) / 2);
+
+			if(syms[mid].n_value < address)
+				low = mid + 1;
+			else
+				high = mid;
+		}
+
+		int index;
+
+		if(low < symbol_count)
+		{
+			if(address < syms[low].n_value)
+				index = low - 1;
+			else
+				index = low;
+		}
 		else
-			high = mid;
-	}
+		{
+			index = symbol_count - 1;
+		}
 
-	int index;
-
-	if(low < symbol_count)
-	{
-		if(address < symbols[low].n_value)
-			index = low - 1;
+		if(index < 0)
+			return NULL;
 		else
-			index = low;
+			return string_table + syms[index].n_un.n_strx;
 	}
 	else
 	{
-		index = symbol_count - 1;
-	}
+		struct nlist *syms = (struct nlist *) symbols;
 
-	if(index < 0)
-		return NULL;
-	else
-		return (const char *)symbols[index].n_un.n_strx;
+		while(low < high)
+		{
+			uint32_t mid = low + ((high - low) / 2);
+
+			if(syms[mid].n_value < address)
+				low = mid + 1;
+			else
+				high = mid;
+		}
+
+		int index;
+
+		if(low < symbol_count)
+		{
+			if(address < syms[low].n_value)
+				index = low - 1;
+			else
+				index = low;
+		}
+		else
+		{
+			index = symbol_count - 1;
+		}
+
+		if(index < 0)
+			return NULL;
+		else
+			return string_table + syms[index].n_un.n_strx;
+	}
 }
 
 // -----------------------------------------------------------------------
-char *symbol_table::demangled_name_at_address(uint32_t address)
+char *symbol_table::demangled_name_at_address(uintptr_t address)
 {
 	const char *name = symbol_name_at_address(address);
-	if(!name)
+
+	if (!name)
 		return NULL;
 
 	int status;
@@ -513,7 +588,7 @@ char *symbol_table::demangled_name_at_address(uint32_t address)
 }
 
 // -----------------------------------------------------------------------
-uint32_t symbol_table::source_location_at_address(uint32_t address,
+uintptr_t symbol_table::source_location_at_address(uintptr_t address,
 	const char **path, uint32_t *line)
 {
 	uint32_t low = 0;
@@ -554,9 +629,25 @@ uint32_t symbol_table::source_location_at_address(uint32_t address,
 }
 
 // -----------------------------------------------------------------------
+void symbol_table::process_executable()
+{
+	is_64_bit = false;
+
+	if (_mh_execute_header.magic == MH_MAGIC)
+	{
+		process_load_commands();
+	}
+	else if (_mh_execute_header.magic == MH_MAGIC_64)
+	{
+		is_64_bit = true;
+		process_load_commands_64();
+	}
+}
+
+// -----------------------------------------------------------------------
 void symbol_table::process_load_commands()
 {
-	int vmoffset = (int) &_mh_execute_header;
+	intptr_t vmoffset = (intptr_t) &_mh_execute_header;
 
 	uint32_t num_cmds = _mh_execute_header.ncmds;
 
@@ -593,16 +684,18 @@ void symbol_table::process_load_commands()
 
 // -----------------------------------------------------------------------
 void symbol_table::process_symtab_command(struct symtab_command *cmd,
-	int vmoffset)
+	intptr_t vmoffset)
 {
-	const char *strtab = (const char *) (vmoffset + cmd->stroff);
+	string_table = (const char *) (vmoffset + cmd->stroff);
 	struct nlist *symtab = (struct nlist *) (vmoffset + cmd->symoff);
 
 	uint32_t nsyms = cmd->nsyms;
 	uint32_t strtabsize = cmd->strsize;
 
 	stab_info = (struct stab_info *)calloc(nsyms, sizeof(struct stab_info));
-	symbols = (struct nlist *)calloc(nsyms, sizeof(struct nlist));
+	struct nlist *_symbols = (struct nlist *)calloc(nsyms,
+			sizeof(struct nlist));
+	symbols = _symbols;
 
 	const char *current_file = NULL;
 
@@ -653,7 +746,7 @@ void symbol_table::process_symtab_command(struct symtab_command *cmd,
 					   at the end of the compilation unit, where the name
 					   field is "\0". */
 
-					const char *name = strtab + symtab->n_un.n_strx;
+					const char *name = string_table + symtab->n_un.n_strx;
 
 					if(name[0] == '\0')
 					{
@@ -669,7 +762,7 @@ void symbol_table::process_symtab_command(struct symtab_command *cmd,
 
 				case N_SOL:
 				{
-					current_file = strtab + symtab->n_un.n_strx;
+					current_file = string_table + symtab->n_un.n_strx;
 					break;
 				}
 			}
@@ -678,19 +771,15 @@ void symbol_table::process_symtab_command(struct symtab_command *cmd,
 		{
 			if(symtab->n_value != 0 && symtab->n_un.n_strx != 0)
 			{
-				if((uint32_t)symtab->n_un.n_strx < strtabsize &&
+				if((uintptr_t)symtab->n_un.n_strx < strtabsize &&
 					(symtab->n_type & N_TYPE) == N_SECT)
 				{
-					memcpy(&symbols[symbol_count], symtab,
+					memcpy(&_symbols[symbol_count], symtab,
 						sizeof(struct nlist));
 
-					// Pre-add the string table offset so it can be more
-					// easily accessed later.
-					symbols[symbol_count].n_un.n_strx += (uint32_t)strtab;
-
 					if(symbol_count > 0 && symbols_need_sort == false &&
-						symbols[symbol_count].n_value <
-						symbols[symbol_count - 1].n_value)
+							_symbols[symbol_count].n_value <
+							_symbols[symbol_count - 1].n_value)
 					{
 						symbols_need_sort = true;
 					}
@@ -706,8 +795,9 @@ void symbol_table::process_symtab_command(struct symtab_command *cmd,
 	/* Shrink the arrays to save memory. */
 	if(symbol_count > 0)
 	{
-		symbols = (struct nlist *)realloc(symbols,
+		_symbols = (struct nlist *)realloc(_symbols,
 			symbol_count * sizeof(struct nlist));
+		symbols = _symbols;
 	}
 	else
 	{
@@ -729,6 +819,192 @@ void symbol_table::process_symtab_command(struct symtab_command *cmd,
 	if(symbols != NULL && symbols_need_sort)
 	{
 		qsort(symbols, symbol_count, sizeof(struct nlist), &symbol_sorter);
+		symbols_need_sort = false;
+	}
+
+	if(stab_info != NULL && stab_info_needs_sort)
+	{
+		qsort(stab_info, stab_info_count, sizeof(struct stab_info),
+			&stab_info_sorter);
+		stab_info_needs_sort = false;
+	}
+}
+
+// -----------------------------------------------------------------------
+void symbol_table::process_load_commands_64()
+{
+	intptr_t vmoffset = (intptr_t) &_mh_execute_header;
+
+	uint32_t num_cmds = _mh_execute_header.ncmds;
+
+	struct load_command *load_cmd =
+		(struct load_command *) (vmoffset + sizeof(struct mach_header_64));
+
+	for(uint32_t i = 0; i < num_cmds; i++)
+	{
+		if(load_cmd->cmd == LC_SEGMENT_64)
+		{
+			struct segment_command_64 *seg_cmd =
+				(struct segment_command_64 *) load_cmd;
+
+			if (0 == strcmp(seg_cmd->segname, "__LINKEDIT"))
+			{
+				// .stabs data is stored in the __LINKEDIT segment, so we have
+				// to get the correct virtual memory address for the beginning
+				// of this data.
+
+				vmoffset = seg_cmd->vmaddr - seg_cmd->fileoff;
+			}
+		}
+		else if(load_cmd->cmd == LC_SYMTAB)
+		{
+			process_symtab_command_64(
+				(struct symtab_command *)load_cmd, vmoffset);
+		}
+
+		/* Advance to the next load command. */
+		load_cmd =
+			(struct load_command*)((char*)load_cmd + load_cmd->cmdsize);
+	}
+}
+
+// -----------------------------------------------------------------------
+void symbol_table::process_symtab_command_64(struct symtab_command *cmd,
+	intptr_t vmoffset)
+{
+	string_table = (const char *) (vmoffset + cmd->stroff);
+	struct nlist_64 *symtab = (struct nlist_64 *) (vmoffset + cmd->symoff);
+
+	uint32_t nsyms = cmd->nsyms;
+	uint32_t strtabsize = cmd->strsize;
+
+	stab_info = (struct stab_info *)calloc(nsyms, sizeof(struct stab_info));
+	struct nlist_64 *_symbols = (struct nlist_64 *)calloc(nsyms,
+			sizeof(struct nlist_64));
+	symbols = _symbols;
+
+	const char *current_file = NULL;
+
+	for(uint32_t i = 0; i < nsyms; i++)
+	{
+		if(symtab->n_type & N_STAB)
+		{
+			switch(symtab->n_type)
+			{
+				case N_SLINE:
+				{
+					uint32_t line = symtab->n_desc;
+					uintptr_t address = (uintptr_t)symtab->n_value;
+
+					// Special case for .s files?
+					if (current_file)
+					{
+						int len = strlen(current_file);
+						if(current_file[len - 2] == '.' &&
+							current_file[len - 1] == 's')
+						{
+							address -= 4;
+						}
+
+						stab_info[stab_info_count].filename = current_file;
+						stab_info[stab_info_count].address = address;
+						stab_info[stab_info_count].line = line;
+						
+						if(stab_info_count > 0 && stab_info_needs_sort == false &&
+							stab_info[stab_info_count].address <
+							stab_info[stab_info_count - 1].address)
+						{
+							stab_info_needs_sort = true;
+						}
+
+						stab_info_count++;
+					}
+
+					break;
+				}
+
+				case N_SO:
+				{
+					/* Beginning of a compilation unit --
+					   This directive comes in pairs, the first being the
+					   absolute path to the file and the second being the
+					   name of the file in that path. It also occurs singly
+					   at the end of the compilation unit, where the name
+					   field is "\0". */
+
+					const char *name = string_table + symtab->n_un.n_strx;
+
+					if(name[0] == '\0')
+					{
+						current_file = NULL;
+					}
+					else
+					{
+						current_file = name;
+					}
+
+					break;
+				}
+
+				case N_SOL:
+				{
+					current_file = string_table + symtab->n_un.n_strx;
+					break;
+				}
+			}
+		}
+		else
+		{
+			if(symtab->n_value != 0 && symtab->n_un.n_strx != 0)
+			{
+				if((uintptr_t)symtab->n_un.n_strx < strtabsize &&
+					(symtab->n_type & N_TYPE) == N_SECT)
+				{
+					memcpy(&_symbols[symbol_count], symtab,
+						sizeof(struct nlist_64));
+
+					if(symbol_count > 0 && symbols_need_sort == false &&
+							_symbols[symbol_count].n_value <
+							_symbols[symbol_count - 1].n_value)
+					{
+						symbols_need_sort = true;
+					}
+
+					symbol_count++;
+				}
+			}
+		}
+
+		symtab++;
+	}
+
+	/* Shrink the arrays to save memory. */
+	if(symbol_count > 0)
+	{
+		_symbols = (struct nlist_64 *)realloc(symbols,
+			symbol_count * sizeof(struct nlist_64));
+		symbols = _symbols;
+	}
+	else
+	{
+		free(symbols);
+		symbols = NULL;
+	}
+
+	if(stab_info_count > 0)
+	{
+		stab_info = (struct stab_info *)realloc(stab_info,
+			stab_info_count * sizeof(struct stab_info));
+	}
+	else
+	{
+		free(stab_info);
+		stab_info = NULL;
+	}
+
+	if(symbols != NULL && symbols_need_sort)
+	{
+		qsort(symbols, symbol_count, sizeof(struct nlist_64), &symbol_sorter);
 		symbols_need_sort = false;
 	}
 

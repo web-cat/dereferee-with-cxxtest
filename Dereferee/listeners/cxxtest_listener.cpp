@@ -130,6 +130,8 @@ private:
 
 	FILE* stream;
 	
+	FILE* webcat_file;
+
 	Dereferee::platform* platform;
 
 	// -----------------------------------------------------------------------
@@ -189,6 +191,7 @@ cxxtest_listener::cxxtest_listener(const Dereferee::option* options,
 	stream = stdout;
 	prefix_string = NULL;
 	max_leaks = UINT_MAX;
+	webcat_file = NULL;
 
 	while(options->key != NULL)
 	{
@@ -198,6 +201,10 @@ cxxtest_listener::cxxtest_listener(const Dereferee::option* options,
 			{
 				stream = stderr;
 			}
+		}
+		else if(strcmp(options->key, "webcat.stats.path") == 0)
+		{
+			webcat_file = fopen(options->value, "w");
 		}
 		else if(strcmp(options->key, "output.prefix") == 0)
 		{
@@ -217,6 +224,9 @@ cxxtest_listener::cxxtest_listener(const Dereferee::option* options,
 // ---------------------------------------------------------------------------
 cxxtest_listener::~cxxtest_listener()
 {
+	if(webcat_file)
+		fclose(webcat_file);
+
 	if(prefix_string)
 		free(prefix_string);
 }
@@ -229,7 +239,7 @@ size_t cxxtest_listener::maximum_leaks_to_report()
 
 // ------------------------------------------------------------------
 void* cxxtest_listener::get_allocation_user_info(
-    const Dereferee::allocation_info& alloc_info)
+    const Dereferee::allocation_info& /* alloc_info */)
 {
     return (void*) CxxTest::MemoryTrackingListener::tagAction(
         CxxTest::MemoryTrackingListener::GET);
@@ -239,7 +249,7 @@ void* cxxtest_listener::get_allocation_user_info(
 bool cxxtest_listener::should_report_leak(
 	const Dereferee::allocation_info& leak)
 {
-    unsigned int tag = (unsigned int) leak.user_info();    
+	uintptr_t tag = (uintptr_t) leak.user_info();
     return (tag & 0x80000000) == 0;
 }
 
@@ -247,6 +257,12 @@ bool cxxtest_listener::should_report_leak(
 void cxxtest_listener::begin_report(const Dereferee::usage_stats& stats)
 {
 	usage_stats = &stats;
+
+	if (webcat_file)
+	{
+		fprintf(webcat_file,
+				"$results->setNumLeaks(%d);\n", stats.leaks());
+	}
 
 	if(stats.leaks() > 0)
 	{
@@ -325,6 +341,23 @@ void cxxtest_listener::end_report()
 				   usage_stats->calls_to_delete_null());
 	prefix_printf("Number of calls to delete[] (null):        %zu\n",
 				   usage_stats->calls_to_array_delete_null());
+
+	if (webcat_file)
+	{
+		fprintf(webcat_file,
+				"$results->setMemoryAmounts(%zu, %zu);\n",
+				usage_stats->total_bytes_allocated(),
+				usage_stats->maximum_bytes_in_use());
+
+		fprintf(webcat_file,
+				"$results->setNumCalls(%zu, %zu, %zu, %zu, %zu);\n",
+				usage_stats->calls_to_new(),
+				usage_stats->calls_to_delete(),
+				usage_stats->calls_to_array_new(),
+				usage_stats->calls_to_array_delete(),
+				usage_stats->calls_to_delete_null() +
+					usage_stats->calls_to_array_delete_null());
+	}
 }
 
 // ------------------------------------------------------------------
@@ -385,7 +418,7 @@ void cxxtest_listener::warning(Dereferee::warning_code code, va_list args)
 void cxxtest_listener::prefix_printf(const char* format, ...)
 {
 	if(prefix_string)
-		fprintf(stream, prefix_string);
+		fputs(prefix_string, stream);
 
 	va_list args;
 	va_start(args, format);
@@ -397,7 +430,7 @@ void cxxtest_listener::prefix_printf(const char* format, ...)
 void cxxtest_listener::prefix_vprintf(const char* format, va_list args)
 {
 	if(prefix_string)
-		fprintf(stream, prefix_string);
+		fputs(prefix_string, stream);
 
 	vfprintf(stream, format, args);	
 }

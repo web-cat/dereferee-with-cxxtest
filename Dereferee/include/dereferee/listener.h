@@ -307,7 +307,8 @@ public:
      *
      * @returns an arbitrary value to associate with the memory block
      */
-    virtual void* get_allocation_user_info(const allocation_info& alloc_info)
+    virtual void* get_allocation_user_info(
+    		const allocation_info& /* alloc_info */)
     {
         return NULL;
     }
@@ -324,7 +325,8 @@ public:
      *
      * @returns an arbitrary value to associate with the memory block
      */
-    virtual void free_allocation_user_info(const allocation_info& alloc_info)
+    virtual void free_allocation_user_info(
+    		const allocation_info& /* alloc_info */)
     {
     }
 
@@ -356,7 +358,7 @@ public:
 	 * @param stats a usage_stats object that can be queried for information
 	 *     about memory usage during program execution
 	 */
-	virtual void begin_report(const usage_stats& stats)
+	virtual void begin_report(const usage_stats& /* stats */)
 	{
 	}
 	
@@ -370,7 +372,7 @@ public:
 	 * @param leak an allocation_info object that can be queried for
 	 *     information about the block of memory that was leaked
 	 */
-	virtual bool should_report_leak(const allocation_info& leak)
+	virtual bool should_report_leak(const allocation_info& /* leak */)
 	{
         return true;
 	}
@@ -385,7 +387,7 @@ public:
 	 * @param leak an allocation_info object that can be queried for
 	 *     information about the block of memory that was leaked
 	 */
-	virtual void report_leak(const allocation_info& leak)
+	virtual void report_leak(const allocation_info& /* leak */)
 	{
 	}
 
@@ -399,8 +401,8 @@ public:
 	 * @param leaks_logged the number of leaks that were actually reported
 	 * @param actual_leaks the actual number of total leaks that occurred
 	 */
-	virtual void report_truncated(size_t leaks_reported,
-								  size_t actual_leaks)
+	virtual void report_truncated(size_t /* leaks_reported */,
+								  size_t /* actual_leaks */)
 	{
 	}
 
@@ -427,7 +429,7 @@ public:
 	 * @param args a varargs list that contains arguments to be used when
 	 *     formatting the error message string
 	 */
-	virtual void error(error_code code, va_list args) = 0;
+	virtual void error(error_code /* code */, va_list /* args */) = 0;
 
 	// -----------------------------------------------------------------------
 	/**
@@ -442,7 +444,7 @@ public:
 	 * @param args a varargs list that contains arguments to be used when
 	 *     formatting the warning message string
 	 */
-	virtual void warning(warning_code code, va_list args) = 0;
+	virtual void warning(warning_code /* code */, va_list /* args */) = 0;
 	
 	// -----------------------------------------------------------------------
 	/**
