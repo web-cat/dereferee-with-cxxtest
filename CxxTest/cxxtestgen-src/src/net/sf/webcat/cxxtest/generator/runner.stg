@@ -170,6 +170,7 @@ main(options) ::= <<
 #include \<dereferee/memtab.cpp\>
 #include \<dereferee/usage_stats_impl.cpp\>
 <endif>
+
 <if(options.derefereeListener)>#include \<dereferee/<options.derefereeListener>.cpp\><endif>
 <if(options.derefereePlatform)>#include \<dereferee/<options.derefereePlatform>.cpp\><endif>
 <endif><endif>
