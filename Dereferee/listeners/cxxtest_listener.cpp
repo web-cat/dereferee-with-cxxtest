@@ -261,12 +261,12 @@ void cxxtest_listener::begin_report(const Dereferee::usage_stats& stats)
 	if (webcat_file)
 	{
 		fprintf(webcat_file,
-				"$results->setNumLeaks(%d);\n", stats.leaks());
+				"$results->setNumLeaks(%zu);\n", stats.leaks());
 	}
 
 	if(stats.leaks() > 0)
 	{
-		prefix_printf("%d memory leaks were detected:\n",
+		prefix_printf("%zu memory leaks were detected:\n",
 			   stats.leaks());
 		prefix_printf("--------\n");
 	}
