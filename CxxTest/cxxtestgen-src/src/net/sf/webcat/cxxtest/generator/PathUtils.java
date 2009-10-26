@@ -25,6 +25,7 @@ import java.io.File;
 import java.io.IOException;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Arrays;
 
 //--------------------------------------------------------------------------
 /**
@@ -126,7 +127,7 @@ public class PathUtils
                 String srcVolume = srcSegments[srcSegments.length - 1];
                 String destVolume = destSegments[destSegments.length - 1];
 
-                if (!srcVolume.equals(destVolume))
+                if (!srcVolume.equalsIgnoreCase(destVolume))
                 {
                     return destination.getAbsolutePath();
                 }
@@ -161,7 +162,22 @@ public class PathUtils
 
             while (currentFile != null)
             {
-                segments.add(currentFile.getName());
+                if (currentFile.getParentFile() == null && IS_WINDOWS)
+                {
+                    String volume = currentFile.getAbsolutePath();
+                    if (volume.endsWith(File.separator))
+                    {
+                        volume = volume.substring(0,
+                                volume.length() - File.separator.length());
+                    }
+                    
+                    segments.add(volume);
+                }
+                else
+                {
+                    segments.add(currentFile.getName());
+                }
+
                 currentFile = currentFile.getParentFile();
             }
         }
