@@ -154,6 +154,8 @@ namespace CxxTest
 #include <signal.h>
 #include <sstream>
 
+#define __HINT_QUOTE(x) #x
+
 #ifndef HINT_PREFIX
 #define HINT_PREFIX ""
 #endif
@@ -168,7 +170,7 @@ extern "C" {
 #endif // __CYGWIN__
     {
         CxxTest::SafeString str;
-        str += HINT_PREFIX;
+        str += __HINT_QUOTE(HINT_PREFIX);
         str += "assertion \"";
         str += failedexpr;
         str += "\" failed: file \"";
