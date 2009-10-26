@@ -155,7 +155,7 @@ public:
 	 * @returns the demangled name of the symbol if found, or NULL if there
 	 *     was no symbol at that address
 	 */
-	char *demangled_name_at_address(bd_vma address) NO_INSTR;
+	char *demangled_name_at_address(bfd_vma address) NO_INSTR;
 
 	// -----------------------------------------------------------------------
 	/**
